@@ -2,10 +2,11 @@
   "name": "zeno",
   "version": "1.0.0",
   "description": "Build as the Project-II from 3rd semester.",
-  "main": "app.ts",
+  "main": "server.ts",
   "type": "module",
   "scripts": {
-    "start": "nodemon server.ts",
+    "start": "node --loader ts-node/esm server.ts",
+    "dev": "nodemon server.ts",
     "seed": "node --loader ts-node/esm src/seeds/user.seed.ts"
   },
   "keywords": [],
