@@ -5,9 +5,9 @@
   "main": "server.ts",
   "type": "module",
   "scripts": {
-    "start": "node --loader ts-node/esm server.ts",
-    "dev": "nodemon server.ts",
-    "seed": "node --loader ts-node/esm src/seeds/user.seed.ts"
+    "start": "tsx server.ts",
+    "dev": "tsx watch server.ts",
+    "seed": "tsx src/seeds/user.seed.ts"
   },
   "keywords": [],
   "author": "",
@@ -29,6 +29,7 @@
     "swagger-ui-express": "^5.0.1",
     "ts-dotenv": "^0.9.1",
     "ts-node": "^10.9.2",
+    "tsx": "^4.22.4",
     "winston": "^3.19.0"
   },
   "devDependencies": {
