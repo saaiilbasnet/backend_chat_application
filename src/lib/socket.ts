@@ -7,9 +7,12 @@ import logger from "./logger.ts";
 const app = express();
 const server = http.createServer(app);
 
-const allowedOrigins = ["http://localhost:5173", process.env.CLIENT_URL].filter(
-  Boolean,
-) as string[];
+// CLIENT_URL can be a comma-separated list of allowed origins
+const clientUrls = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(",").map((url) => url.trim()).filter(Boolean)
+  : [];
+
+const allowedOrigins = ["http://localhost:5173", ...clientUrls];
 
 const io = new Server(server, {
   cors: {

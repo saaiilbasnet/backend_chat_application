@@ -12,10 +12,15 @@ app.use(express.json({ limit: "50mb" }));
 const __dirname = path.resolve();
 
 // Allowed origins for CORS
+// CLIENT_URL can be a comma-separated list of allowed origins
+const clientUrls = env.CLIENT_URL
+  ? env.CLIENT_URL.split(",").map((url) => url.trim()).filter(Boolean)
+  : [];
+
 const allowedOrigins = [
   "http://localhost:5173",
-  env.CLIENT_URL,
-].filter(Boolean) as string[];
+  ...clientUrls,
+];
 
 // cors config
 app.use(
