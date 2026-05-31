@@ -148,7 +148,10 @@ export const updateProfile = async (req: UserRequest, res: Response) => {
 
 export const checkAuth = (req: UserRequest, res: Response) => {
   try {
-    res.status(200).json(req.user);
+    // Generate a fresh token and include it in the response so the
+    // frontend can persist it in sessionStorage after a page refresh.
+    const token = generateToken(req.user!._id, res);
+    res.status(200).json({ ...req.user!.toObject(), token });
   } catch (error) {
     logger.error("Error in checkAuth controller " + (error as Error).message);
     res.json({
