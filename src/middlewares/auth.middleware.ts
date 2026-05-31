@@ -10,7 +10,12 @@ export const protectRoute = async (
   next: NextFunction,
 ) => {
   try {
-    const token = req.headers.authorization?.split(" ")[1] || req.cookies.jwt;
+    const rawToken = req.headers.authorization?.split(" ")[1] || req.cookies.jwt;
+
+    // Guard against the frontend sending the literal string "undefined" or "null"
+    const token = rawToken && rawToken !== "undefined" && rawToken !== "null"
+      ? rawToken
+      : null;
 
     if (!token) {
       return res
