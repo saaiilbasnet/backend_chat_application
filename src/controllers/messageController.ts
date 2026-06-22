@@ -10,7 +10,13 @@ import logger from "../lib/logger.ts";
 export const getUsersForSidebar = async (req: UserRequest, res: Response) => {
   try {
     const loggedInUserId = req?.user?._id;
-    const filteredUsers = await User.find({ _id: { $ne: loggedInUserId } }).select("-password");
+    const me = await User.findById(loggedInUserId).select("friends blockedUsers");
+    if (!me) return res.status(404).json({ message: "User not found" });
+
+    const filteredUsers = await User.find({
+      _id: { $in: me.friends, $nin: me.blockedUsers },
+      blockedUsers: { $ne: loggedInUserId },
+    }).select("-password");
 
     res.status(200).json(filteredUsers);
   } catch (error) {
@@ -23,6 +29,22 @@ export const getMessages = async (req: UserRequest, res: Response) => {
   try {
     const { id: userToChatId } = req.params;
     const myId = req?.user?._id;
+    const [me, userToChat] = await Promise.all([
+      User.findById(myId).select("friends blockedUsers"),
+      User.findById(userToChatId).select("blockedUsers"),
+    ]);
+
+    if (!me || !userToChat) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const isFriend = me.friends.some((id) => id.toString() === userToChatId);
+    const isBlocked = me.blockedUsers.some((id) => id.toString() === userToChatId) ||
+      userToChat.blockedUsers.some((id) => id.toString() === myId?.toString());
+
+    if (!isFriend || isBlocked) {
+      return res.status(403).json({ message: "You can only message accepted friends" });
+    }
 
     const messages = await Message.find({
       $or: [
@@ -44,6 +66,22 @@ export const sendMessage = async (req: UserRequest, res: Response) => {
     const { text, image } = req.body;
     const { id: receiverId } = req.params;
     const senderId = req?.user?._id;
+    const [sender, receiver] = await Promise.all([
+      User.findById(senderId).select("friends blockedUsers"),
+      User.findById(receiverId).select("blockedUsers"),
+    ]);
+
+    if (!sender || !receiver) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const isFriend = sender.friends.some((id) => id.toString() === receiverId);
+    const isBlocked = sender.blockedUsers.some((id) => id.toString() === receiverId) ||
+      receiver.blockedUsers.some((id) => id.toString() === senderId?.toString());
+
+    if (!isFriend || isBlocked) {
+      return res.status(403).json({ message: "You can only message accepted friends" });
+    }
 
     let imageUrl;
     if (image) {

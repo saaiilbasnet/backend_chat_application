@@ -6,8 +6,11 @@ export interface UserRequest extends Request {
     fullName: string;
     email: string;
     profilePic: string;
+    friends?: string[];
+    friendRequestsSent?: string[];
+    friendRequestsReceived?: string[];
+    blockedUsers?: string[];
   };
 }
 
 export type UserIdType = string;
-

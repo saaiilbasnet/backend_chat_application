@@ -154,7 +154,9 @@ export const checkAuth = (req: UserRequest, res: Response) => {
     // Generate a fresh token and include it in the response so the
     // frontend can persist it in sessionStorage after a page refresh.
     const token = generateToken(req.user!._id, res);
-    res.status(200).json({ ...req.user!.toObject(), token });
+    const user = req.user as typeof req.user & { toObject?: () => object };
+    const safeUser = user?.toObject ? user.toObject() : user;
+    res.status(200).json({ ...safeUser, token });
   } catch (error) {
     logger.error("Error in checkAuth controller " + (error as Error).message);
     res.json({
