@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import User from "../database/users/userModel.ts";
 import { UserRequest } from "../types/global.types.ts";
 import logger from "../lib/logger.ts";
+import { getReceiverSocketIds, io } from "../lib/socket.ts";
 
 const publicUserFields = "_id fullName email profilePic";
 
@@ -88,7 +89,7 @@ export const sendFriendRequest = async (req: UserRequest, res: Response) => {
     }
 
     const [me, receiver] = await Promise.all([
-      User.findById(myId).select("friends friendRequestsSent friendRequestsReceived blockedUsers"),
+      User.findById(myId).select("fullName email profilePic friends friendRequestsSent friendRequestsReceived blockedUsers"),
       User.findById(receiverId).select("friends friendRequestsSent friendRequestsReceived blockedUsers"),
     ]);
 
@@ -114,6 +115,19 @@ export const sendFriendRequest = async (req: UserRequest, res: Response) => {
           $pull: { friendRequestsSent: myId },
         }),
       ]);
+
+      const receiverSocketIds = getReceiverSocketIds(receiverId);
+      if (receiverSocketIds.length > 0) {
+        io.to(receiverSocketIds).emit("friendRequestAccepted", {
+          user: {
+            _id: me._id,
+            fullName: me.fullName,
+            email: me.email,
+            profilePic: me.profilePic,
+          },
+        });
+      }
+
       return res.status(200).json({ message: "Friend request accepted" });
     }
 
@@ -121,6 +135,18 @@ export const sendFriendRequest = async (req: UserRequest, res: Response) => {
       User.findByIdAndUpdate(myId, { $addToSet: { friendRequestsSent: receiverId } }),
       User.findByIdAndUpdate(receiverId, { $addToSet: { friendRequestsReceived: myId } }),
     ]);
+
+    const receiverSocketIds = getReceiverSocketIds(receiverId);
+    if (receiverSocketIds.length > 0) {
+      io.to(receiverSocketIds).emit("friendRequestReceived", {
+        user: {
+          _id: me._id,
+          fullName: me.fullName,
+          email: me.email,
+          profilePic: me.profilePic,
+        },
+      });
+    }
 
     res.status(200).json({ message: "Friend request sent" });
   } catch (error) {
@@ -138,7 +164,7 @@ export const acceptFriendRequest = async (req: UserRequest, res: Response) => {
       return res.status(400).json({ message: "Invalid user" });
     }
 
-    const me = await User.findById(myId).select("friendRequestsReceived");
+    const me = await User.findById(myId).select("fullName email profilePic friendRequestsReceived");
     if (!me) return res.status(404).json({ message: "User not found" });
     if (!me.friendRequestsReceived.some((id) => id.toString() === requesterId)) {
       return res.status(400).json({ message: "No pending request from this user" });
@@ -154,6 +180,18 @@ export const acceptFriendRequest = async (req: UserRequest, res: Response) => {
         $pull: { friendRequestsSent: myId },
       }),
     ]);
+
+    const requesterSocketIds = getReceiverSocketIds(requesterId);
+    if (requesterSocketIds.length > 0) {
+      io.to(requesterSocketIds).emit("friendRequestAccepted", {
+        user: {
+          _id: me._id,
+          fullName: me.fullName,
+          email: me.email,
+          profilePic: me.profilePic,
+        },
+      });
+    }
 
     res.status(200).json({ message: "Friend request accepted" });
   } catch (error) {
