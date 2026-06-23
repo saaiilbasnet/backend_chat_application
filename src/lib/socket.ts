@@ -21,8 +21,8 @@ const io = new Server(server, {
   },
 });
 
-// userId -> socketId
-const userSocketMap: Record<string, string> = {};
+// userId -> socketIds. A user can have multiple tabs/devices connected.
+const userSocketMap: Record<string, Set<string>> = {};
 
 //   Normalize userId into a string usable as an object key
 
@@ -30,8 +30,8 @@ function normalizeUserId(userId: string | string[] | undefined): string | null {
   return typeof userId === "string" ? userId : null;
 }
 
-export function getReceiverSocketId(userId: UserIdType): string | undefined {
-  return userSocketMap[String(userId)];
+export function getReceiverSocketIds(userId: UserIdType): string[] {
+  return Array.from(userSocketMap[String(userId)] ?? []);
 }
 
 io.use((socket, next) => {
@@ -55,7 +55,10 @@ io.on("connection", (socket: Socket) => {
   const userId = normalizeUserId(socket.handshake.query.userId);
 
   if (userId) {
-    userSocketMap[userId] = socket.id;
+    if (!userSocketMap[userId]) {
+      userSocketMap[userId] = new Set();
+    }
+    userSocketMap[userId].add(socket.id);
   }
 
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
@@ -64,7 +67,10 @@ io.on("connection", (socket: Socket) => {
     logger.info(`A user disconnected: ${socket.id}`);
 
     if (userId) {
-      delete userSocketMap[userId];
+      userSocketMap[userId]?.delete(socket.id);
+      if (userSocketMap[userId]?.size === 0) {
+        delete userSocketMap[userId];
+      }
     }
 
     io.emit("getOnlineUsers", Object.keys(userSocketMap));

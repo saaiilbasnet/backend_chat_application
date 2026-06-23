@@ -2,7 +2,7 @@ import User from "../database/users/userModel.ts";
 import Message from "../database/messages/messageModel.ts";
 
 import cloudinary from "../lib/cloudinary.ts";
-import { getReceiverSocketId, io } from "../lib/socket.ts";
+import { getReceiverSocketIds, io } from "../lib/socket.ts";
 import { UserRequest } from "../types/global.types.ts";
 import { Response } from "express";
 import logger from "../lib/logger.ts";
@@ -99,9 +99,9 @@ export const sendMessage = async (req: UserRequest, res: Response) => {
 
     await newMessage.save();
 
-    const receiverSocketId = getReceiverSocketId(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("newMessage", newMessage);
+    const receiverSocketIds = getReceiverSocketIds(receiverId);
+    if (receiverSocketIds.length > 0) {
+      io.to(receiverSocketIds).emit("newMessage", newMessage);
     }
 
     res.status(201).json(newMessage);
@@ -153,9 +153,9 @@ export const editMessage = async (req: UserRequest, res: Response) => {
     message.isEdited = true;
     await message.save();
 
-    const receiverSocketId = getReceiverSocketId(message.receiverId.toString());
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("messageEdited", message);
+    const receiverSocketIds = getReceiverSocketIds(message.receiverId.toString());
+    if (receiverSocketIds.length > 0) {
+      io.to(receiverSocketIds).emit("messageEdited", message);
     }
 
     res.status(200).json(message);
@@ -185,9 +185,9 @@ export const deleteSingleMessage = async (req: UserRequest, res: Response) => {
     // Hard delete the message
     await Message.findByIdAndDelete(messageId);
 
-    const receiverSocketId = getReceiverSocketId(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("messageDeleted", messageId);
+    const receiverSocketIds = getReceiverSocketIds(receiverId);
+    if (receiverSocketIds.length > 0) {
+      io.to(receiverSocketIds).emit("messageDeleted", messageId);
     }
 
     res.status(200).json({ message: "Message deleted successfully", messageId });
