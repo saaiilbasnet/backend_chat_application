@@ -5,6 +5,12 @@ import cloudinary from "../lib/cloudinary.ts";
 import { generateToken } from "../lib/utils.ts";
 import { UserRequest } from "../types/global.types.ts";
 import logger from "../lib/logger.ts";
+import { resend } from "../lib/resend.ts";
+import { env } from "../config/env.ts";
+
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 export const register = async (req: UserRequest, res: Response) => {
   const { fullName, email, password } = req.body;
@@ -30,39 +36,61 @@ export const register = async (req: UserRequest, res: Response) => {
       });
     }
 
-    const user = await User.findOne({ email });
-    if (user)
-      return res.status(400).json({
-        message: "Email already exists!",
-      });
+    let user = await User.findOne({ email });
+    if (user) {
+      if (user.isVerified) {
+        return res.status(400).json({ message: "Email already exists!" });
+      }
+      // If unverified, we'll update their OTP and resend
+    }
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+    const otp = generateOTP();
+    const now = Date.now();
+    const otpExpiresAt = new Date(now + 10 * 60 * 1000); // 10 minutes
 
-    // Default profile picture if none provided
-    // Using a public avatar service. 'username' style based on fullName without spaces.
-    const defaultProfilePic = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(fullName)}`;
-
-    const newUser = new User({
-      fullName,
-      email,
-      password: hashedPassword,
-      profilePic: defaultProfilePic,
-    });
-    if (newUser) {
-      // generate jwt token here
-      const token = generateToken(newUser._id, res);
-      await newUser.save();
-
-      res.status(201).json({
-        _id: newUser._id,
-        fullName: newUser.fullName,
-        email: newUser.email,
-        profilePic: newUser.profilePic,
-        token,
+    if (!user) {
+      const defaultProfilePic = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(fullName)}`;
+      user = new User({
+        fullName,
+        email,
+        password: hashedPassword,
+        profilePic: defaultProfilePic,
+        isVerified: false,
+        otp,
+        otpExpiresAt,
+        otpLastSentAt: new Date(now),
+        otpResendCount: 0,
       });
     } else {
-      res.status(400).json({ message: "Invalid user data" });
+      user.fullName = fullName;
+      user.password = hashedPassword;
+      user.otp = otp;
+      user.otpExpiresAt = otpExpiresAt;
+      user.otpLastSentAt = new Date(now);
+      user.otpResendCount = 0;
     }
+
+    await user.save();
+
+    if (resend) {
+      await resend.emails.send({
+        from: `Zeno Chat <${env.RESEND_FROM_EMAIL}>`,
+        to: email,
+        subject: "Your OTP for Zeno Chat Verification",
+        html: `<p>Your verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
+      });
+    } else {
+      logger.warn("Resend client not initialized. OTP generated and saved to DB, but email was not sent.");
+    }
+
+    res.status(200).json({
+      message: "OTP sent to your email",
+      requireOtp: true,
+      email: user.email,
+    });
+
   } catch (error) {
     logger.error("Error on register controller : " + (error as Error).message);
     res.json({
@@ -83,6 +111,10 @@ export const login = async (req: UserRequest, res: Response) => {
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
     if (!isPasswordCorrect) {
       return res.status(400).json({ message: "Invalid credentials" });
+    }
+
+    if (!user.isVerified) {
+      return res.status(403).json({ message: "Please verify your email first", unverified: true });
     }
 
     // logger.debug({ req: req.body });
@@ -180,3 +212,100 @@ export const deleteAccount = async (req: UserRequest, res: Response) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+export const verifyOtp = async (req: UserRequest, res: Response) => {
+  const { email, otp } = req.body;
+  try {
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: "Email is already verified" });
+    }
+
+    if (user.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (!user.otpExpiresAt || user.otpExpiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ message: "OTP has expired" });
+    }
+
+    user.isVerified = true;
+    user.otp = undefined;
+    user.otpExpiresAt = undefined;
+    user.otpLastSentAt = undefined;
+    user.otpResendCount = 0;
+    await user.save();
+
+    const token = generateToken(user._id, res);
+
+    res.status(200).json({
+      _id: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      profilePic: user.profilePic,
+      token,
+    });
+  } catch (error) {
+    logger.error("Error in verifyOtp controller: " + (error as Error).message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const resendOtp = async (req: UserRequest, res: Response) => {
+  const { email } = req.body;
+  try {
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.isVerified) return res.status(400).json({ message: "Email is already verified" });
+
+    const now = Date.now();
+    if (user.otpLastSentAt) {
+      const timeSinceLastSent = now - user.otpLastSentAt.getTime();
+      const count = user.otpResendCount || 0;
+      
+      let requiredWaitMs = 30 * 1000;
+      if (count === 1) requiredWaitMs = 120 * 1000; // 2 mins
+      else if (count >= 2) requiredWaitMs = 300 * 1000; // 5 mins
+
+      if (timeSinceLastSent < requiredWaitMs) {
+        const remainingSeconds = Math.ceil((requiredWaitMs - timeSinceLastSent) / 1000);
+        return res.status(429).json({ message: `Please wait ${remainingSeconds} seconds before requesting another OTP`, remainingSeconds });
+      }
+    }
+
+    const otp = generateOTP();
+    user.otp = otp;
+    user.otpExpiresAt = new Date(now + 10 * 60 * 1000);
+    user.otpLastSentAt = new Date(now);
+    user.otpResendCount = (user.otpResendCount || 0) + 1;
+    await user.save();
+
+    if (resend) {
+      await resend.emails.send({
+        from: `Zeno Chat <${env.RESEND_FROM_EMAIL}>`,
+        to: email,
+        subject: "Your new OTP for Zeno Chat Verification",
+        html: `<p>Your new verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
+      });
+    } else {
+      logger.warn("Resend client not initialized. New OTP generated and saved to DB, but email was not sent.");
+    }
+
+    res.status(200).json({ message: "OTP resent successfully" });
+  } catch (error) {
+    logger.error("Error in resendOtp controller: " + (error as Error).message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+

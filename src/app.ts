@@ -4,6 +4,7 @@ import { app } from "./lib/socket.ts";
 import authRoutes from "./routes/authRoutes.ts";
 import messageRoutes from "./routes/messageRoute.ts";
 import friendRoutes from "./routes/friendRoutes.ts";
+import groupRoutes from "./routes/groupRoutes.ts";
 import cookieParser from "cookie-parser";
 import path from "path";
 import { errorHandler } from "./middlewares/error.middleware.ts";
@@ -38,6 +39,7 @@ app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/friends", friendRoutes);
+app.use("/api/groups", groupRoutes);
 
 app.get("/", (req: Request, res: Response) => {
   res.send("Chat Application Backend API is running");

@@ -44,6 +44,23 @@ const userSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    otp: {
+      type: String,
+    },
+    otpExpiresAt: {
+      type: Date,
+    },
+    otpResendCount: {
+      type: Number,
+      default: 0,
+    },
+    otpLastSentAt: {
+      type: Date,
+    },
   },
   { timestamps: true },
 );
