@@ -1,6 +1,16 @@
-import mongoose from "mongoose";
+import mongoose, { type HydratedDocument, type Types } from "mongoose";
 
-const groupSchema = new mongoose.Schema(
+export interface IGroup {
+  name: string;
+  description: string;
+  avatar: string;
+  admin: Types.ObjectId;
+  members: Types.ObjectId[];
+}
+
+export type GroupDocument = HydratedDocument<IGroup>;
+
+const groupSchema = new mongoose.Schema<IGroup>(
   {
     name: {
       type: String,
@@ -30,6 +40,6 @@ const groupSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-const Group = mongoose.model("Group", groupSchema);
+const Group = mongoose.model<IGroup>("Group", groupSchema);
 
 export default Group;

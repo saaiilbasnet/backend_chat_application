@@ -54,6 +54,7 @@ const socketEventQueueEvents = connection ? new QueueEvents("socket-events", { c
 
 let emailWorker: Worker<EmailJobData> | null = null;
 let socketEventWorker: Worker<SocketEventJobData> | null = null;
+let hasLoggedDirectEmailFallback = false;
 
 const emitSocketEvent = ({ userIds, event, payload, excludeUserId }: SocketEventJobData) => {
   for (const userId of userIds) {
@@ -67,7 +68,10 @@ const emitSocketEvent = ({ userIds, event, payload, excludeUserId }: SocketEvent
 
 export const enqueueEmail = async (data: EmailJobData) => {
   if (!emailQueue) {
-    logger.warn("Redis URL not configured. Sending email without queue.");
+    if (!hasLoggedDirectEmailFallback) {
+      logger.info("Redis URL not configured. Sending email directly without queue.");
+      hasLoggedDirectEmailFallback = true;
+    }
     return sendEmail(data);
   }
 
@@ -97,7 +101,10 @@ export const enqueueSocketEvent = async (data: SocketEventJobData) => {
 };
 
 export const startQueueWorkers = () => {
-  if (!connection) return;
+  if (!connection) {
+    logger.info("Redis URL not configured. Queue workers disabled.");
+    return;
+  }
 
   if (!emailWorker) {
     emailWorker = new Worker<EmailJobData>(

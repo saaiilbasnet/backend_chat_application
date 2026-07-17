@@ -3,6 +3,15 @@ import User from "../database/users/userModel.ts";
 import { NextFunction, Response } from "express";
 import { UserRequest } from "../types/global.types.ts";
 import logger from "../lib/logger.ts";
+import { env } from "../config/env.ts";
+
+interface AuthTokenPayload extends JwtPayload {
+  userId: string;
+}
+
+const isAuthTokenPayload = (payload: string | JwtPayload): payload is AuthTokenPayload => {
+  return typeof payload !== "string" && typeof payload.userId === "string";
+};
 
 export const protectRoute = async (
   req: UserRequest,
@@ -23,9 +32,9 @@ export const protectRoute = async (
         .json({ message: "Unauthorized - No Token Provided" });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || '') as JwtPayload;
+    const decoded = jwt.verify(token, env.JWT_SECRET);
 
-    if (!decoded || !decoded.userId) {
+    if (!isAuthTokenPayload(decoded)) {
       return res.status(401).json({ message: "Unauthorized - Invalid Token" });
     }
 
@@ -35,7 +44,7 @@ export const protectRoute = async (
       return res.status(404).json({ message: "User not found" });
     }
 
-    req.user = user as unknown as NonNullable<UserRequest["user"]>;
+    req.user = user;
 
     next();
   } catch (error) {

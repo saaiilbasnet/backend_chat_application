@@ -374,7 +374,16 @@ export const resetPassword = async (req: UserRequest, res: Response) => {
     user.passwordResetOtpResendCount = 0;
     await user.save();
 
-    return res.status(200).json({ message: "Password reset successfully" });
+    const token = generateToken(user._id, res);
+
+    return res.status(200).json({
+      message: "Password reset successfully",
+      _id: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      profilePic: user.profilePic,
+      token,
+    });
   } catch (error) {
     logger.error("Error in resetPassword controller: " + (error as Error).message);
     return res.status(500).json({ message: "Internal server error" });

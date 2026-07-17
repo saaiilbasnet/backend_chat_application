@@ -19,11 +19,30 @@ import { enqueueSocketEvent } from "../lib/queues.ts";
 const MEMBER_FIELDS = "_id fullName profilePic email";
 const ADMIN_FIELDS = "_id fullName profilePic";
 
+interface PopulatedMember {
+  _id: mongoose.Types.ObjectId;
+}
+
 async function getPopulatedGroup(groupId: string) {
   return Group.findById(groupId)
     .populate("members", MEMBER_FIELDS)
     .populate("admin", ADMIN_FIELDS);
 }
+
+const isPopulatedMember = (member: unknown): member is PopulatedMember => {
+  return (
+    typeof member === "object" &&
+    member !== null &&
+    "_id" in member &&
+    member._id instanceof mongoose.Types.ObjectId
+  );
+};
+
+const getPopulatedMemberIds = (members: unknown): string[] => {
+  return Array.isArray(members)
+    ? members.filter(isPopulatedMember).map((member) => member._id.toString())
+    : [];
+};
 
 async function emitToMembers(
   memberIds: string[],
@@ -230,9 +249,7 @@ export const addGroupMember = async (req: UserRequest, res: Response) => {
     await Group.findByIdAndUpdate(groupId, { $push: { members: userId } });
 
     const populated = await getPopulatedGroup(groupId);
-    const allMemberIds = (populated?.members as unknown as { _id: mongoose.Types.ObjectId }[])?.map(
-      (m) => m._id.toString(),
-    ) ?? [];
+    const allMemberIds = getPopulatedMemberIds(populated?.members);
 
     await invalidateGroupCaches(groupId, allMemberIds);
     await emitToMembers(allMemberIds, "groupMemberAdded", { group: populated });

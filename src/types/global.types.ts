@@ -1,16 +1,8 @@
 import type { Request } from "express";
+import type { UserDocument } from "../database/users/userModel.ts";
 
 export interface UserRequest extends Request {
-  user?: {
-    _id: string;
-    fullName: string;
-    email: string;
-    profilePic: string;
-    friends?: string[];
-    friendRequestsSent?: string[];
-    friendRequestsReceived?: string[];
-    blockedUsers?: string[];
-  };
+  user?: UserDocument;
 }
 
 export type UserIdType = string;

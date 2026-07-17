@@ -1,6 +1,28 @@
-import mongoose from "mongoose";
+import mongoose, { type HydratedDocument, type Types } from "mongoose";
 
-const userSchema = new mongoose.Schema(
+export interface IUser {
+  email: string;
+  fullName: string;
+  password: string;
+  profilePic: string;
+  friends: Types.ObjectId[];
+  friendRequestsSent: Types.ObjectId[];
+  friendRequestsReceived: Types.ObjectId[];
+  blockedUsers: Types.ObjectId[];
+  isVerified: boolean;
+  otp?: string;
+  otpExpiresAt?: Date;
+  otpResendCount: number;
+  otpLastSentAt?: Date;
+  passwordResetOtp?: string;
+  passwordResetOtpExpiresAt?: Date;
+  passwordResetOtpLastSentAt?: Date;
+  passwordResetOtpResendCount: number;
+}
+
+export type UserDocument = HydratedDocument<IUser>;
+
+const userSchema = new mongoose.Schema<IUser>(
   {
     email: {
       type: String,
@@ -78,6 +100,6 @@ const userSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-const User = mongoose.model("User", userSchema);
+const User = mongoose.model<IUser>("User", userSchema);
 
 export default User;

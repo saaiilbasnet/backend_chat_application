@@ -1,20 +1,30 @@
 import { NextFunction, Request, Response } from "express";
 import logger from "../lib/logger.ts";
 
+interface HttpError extends Error {
+    statusCode?: number;
+}
+
+const isHttpError = (err: unknown): err is HttpError => {
+    return err instanceof Error;
+};
+
 export const errorHandler = (
-    err: any,
+    err: unknown,
     req: Request,
     res: Response,
     next: NextFunction,
 ) => {
-    logger.error("Error Detail: " + (err.stack || err.message || err));
+    const error: HttpError = isHttpError(err) ? err : new Error(String(err));
 
-    const statusCode = err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    logger.error("Error Detail: " + (error.stack || error.message));
+
+    const statusCode = error.statusCode || 500;
+    const message = error.message || "Internal Server Error";
 
     res.status(statusCode).json({
         success: false,
         message,
-        ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+        ...(process.env.NODE_ENV === "development" && { stack: error.stack }),
     });
 };
