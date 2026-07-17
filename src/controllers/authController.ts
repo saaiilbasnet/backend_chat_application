@@ -5,8 +5,7 @@ import cloudinary from "../lib/cloudinary.ts";
 import { generateToken } from "../lib/utils.ts";
 import { UserRequest } from "../types/global.types.ts";
 import logger from "../lib/logger.ts";
-import { resend } from "../lib/resend.ts";
-import { env } from "../config/env.ts";
+import { sendEmail } from "../lib/email.ts";
 
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -74,16 +73,11 @@ export const register = async (req: UserRequest, res: Response) => {
 
     await user.save();
 
-    if (resend) {
-      await resend.emails.send({
-        from: `Zeno Chat <${env.RESEND_FROM_EMAIL}>`,
-        to: email,
-        subject: "Your OTP for Zeno Chat Verification",
-        html: `<p>Your verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
-      });
-    } else {
-      logger.warn("Resend client not initialized. OTP generated and saved to DB, but email was not sent.");
-    }
+    await sendEmail({
+      to: email,
+      subject: "Your OTP for Zeno Chat Verification",
+      html: `<p>Your verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
+    });
 
     res.status(200).json({
       message: "OTP sent to your email",
@@ -290,16 +284,11 @@ export const resendOtp = async (req: UserRequest, res: Response) => {
     user.otpResendCount = (user.otpResendCount || 0) + 1;
     await user.save();
 
-    if (resend) {
-      await resend.emails.send({
-        from: `Zeno Chat <${env.RESEND_FROM_EMAIL}>`,
-        to: email,
-        subject: "Your new OTP for Zeno Chat Verification",
-        html: `<p>Your new verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
-      });
-    } else {
-      logger.warn("Resend client not initialized. New OTP generated and saved to DB, but email was not sent.");
-    }
+    await sendEmail({
+      to: email,
+      subject: "Your new OTP for Zeno Chat Verification",
+      html: `<p>Your new verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
+    });
 
     res.status(200).json({ message: "OTP resent successfully" });
   } catch (error) {
@@ -307,5 +296,4 @@ export const resendOtp = async (req: UserRequest, res: Response) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
-
 

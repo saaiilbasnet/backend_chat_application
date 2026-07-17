@@ -24,6 +24,9 @@ export const env = {
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
   MONGODB_URI: process.env.MONGODB_URI,
   CLIENT_URL: process.env.CLIENT_URL,
-  RESEND_API_KEY: process.env.RESEND_API_KEY,
-  RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev"
+  SMTP_HOST: process.env.SMTP_HOST || "smtp.gmail.com",
+  SMTP_PORT: Number(process.env.SMTP_PORT || 465),
+  SMTP_USER: process.env.SMTP_USER || process.env.EMAIL_USER || "basnetssahil@gmail.com",
+  SMTP_PASS: process.env.SMTP_PASS || process.env.APP_PASSWORD,
+  SMTP_FROM_EMAIL: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || process.env.EMAIL_USER || "basnetssahil@gmail.com",
 };
