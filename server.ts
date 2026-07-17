@@ -4,6 +4,8 @@ import { server } from "./src/lib/socket.ts";
 import "./src/app.ts";
 import { connectDB } from "./src/database/connection.ts";
 import logger from "./src/lib/logger.ts";
+import { connectCache, disconnectCache } from "./src/lib/cache.ts";
+import { closeQueues, startQueueWorkers } from "./src/lib/queues.ts";
 
 const startServer = () => {
   const port = Number(process.env.PORT) || 3000;
@@ -11,6 +13,19 @@ const startServer = () => {
     logger.info(`Server started at http://0.0.0.0:${port}`);
   });
   connectDB();
+  connectCache();
+  startQueueWorkers();
 };
 
 startServer();
+
+const shutdown = async (signal: string) => {
+  logger.info(`${signal} received. Shutting down server.`);
+  server.close(async () => {
+    await Promise.all([disconnectCache(), closeQueues()]);
+    process.exit(0);
+  });
+};
+
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));

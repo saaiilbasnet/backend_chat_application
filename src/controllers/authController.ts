@@ -5,7 +5,7 @@ import cloudinary from "../lib/cloudinary.ts";
 import { generateToken } from "../lib/utils.ts";
 import { UserRequest } from "../types/global.types.ts";
 import logger from "../lib/logger.ts";
-import { sendEmail } from "../lib/email.ts";
+import { enqueueEmail } from "../lib/queues.ts";
 
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -73,7 +73,7 @@ export const register = async (req: UserRequest, res: Response) => {
 
     await user.save();
 
-    await sendEmail({
+    await enqueueEmail({
       to: email,
       subject: "Your OTP for Zeno Chat Verification",
       html: `<p>Your verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
@@ -284,7 +284,7 @@ export const resendOtp = async (req: UserRequest, res: Response) => {
     user.otpResendCount = (user.otpResendCount || 0) + 1;
     await user.save();
 
-    await sendEmail({
+    await enqueueEmail({
       to: email,
       subject: "Your new OTP for Zeno Chat Verification",
       html: `<p>Your new verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
@@ -296,4 +296,3 @@ export const resendOtp = async (req: UserRequest, res: Response) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
-

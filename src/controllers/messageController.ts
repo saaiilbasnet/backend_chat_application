@@ -2,14 +2,28 @@ import User from "../database/users/userModel.ts";
 import Message from "../database/messages/messageModel.ts";
 
 import cloudinary from "../lib/cloudinary.ts";
-import { getReceiverSocketIds, io } from "../lib/socket.ts";
 import { UserRequest } from "../types/global.types.ts";
 import { Response } from "express";
 import logger from "../lib/logger.ts";
+import {
+  cacheKeys,
+  getCache,
+  invalidateDirectMessageCaches,
+  setCache,
+} from "../lib/cache.ts";
+import { enqueueSocketEvent } from "../lib/queues.ts";
 
 export const getUsersForSidebar = async (req: UserRequest, res: Response) => {
   try {
     const loggedInUserId = req?.user?._id;
+    if (!loggedInUserId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const cacheKey = cacheKeys.sidebarUsers(loggedInUserId.toString());
+    const cachedUsers = await getCache(cacheKey);
+    if (cachedUsers) return res.status(200).json(cachedUsers);
+
     const me = await User.findById(loggedInUserId).select("friends blockedUsers");
     if (!me) return res.status(404).json({ message: "User not found" });
 
@@ -18,6 +32,7 @@ export const getUsersForSidebar = async (req: UserRequest, res: Response) => {
       blockedUsers: { $ne: loggedInUserId },
     }).select("-password");
 
+    await setCache(cacheKey, filteredUsers);
     res.status(200).json(filteredUsers);
   } catch (error) {
     logger.error("Error in getUsersForSidebar: " + (error as Error).message);
@@ -29,6 +44,7 @@ export const getMessages = async (req: UserRequest, res: Response) => {
   try {
     const { id: userToChatId } = req.params;
     const myId = req?.user?._id;
+    const myIdString = myId?.toString();
     const [me, userToChat] = await Promise.all([
       User.findById(myId).select("friends blockedUsers"),
       User.findById(userToChatId).select("blockedUsers"),
@@ -46,6 +62,10 @@ export const getMessages = async (req: UserRequest, res: Response) => {
       return res.status(403).json({ message: "You can only message accepted friends" });
     }
 
+    const cacheKey = cacheKeys.directMessages(myIdString!, userToChatId);
+    const cachedMessages = await getCache(cacheKey);
+    if (cachedMessages) return res.status(200).json(cachedMessages);
+
     const messages = await Message.find({
       $or: [
         { senderId: myId, receiverId: userToChatId },
@@ -54,6 +74,7 @@ export const getMessages = async (req: UserRequest, res: Response) => {
       deletedBy: { $ne: myId },
     });
 
+    await setCache(cacheKey, messages);
     res.status(200).json(messages);
   } catch (error) {
     logger.error("Error in getMessages controller: " + (error as Error).message);
@@ -98,11 +119,13 @@ export const sendMessage = async (req: UserRequest, res: Response) => {
     });
 
     await newMessage.save();
+    await invalidateDirectMessageCaches(senderId!.toString(), receiverId);
 
-    const receiverSocketIds = getReceiverSocketIds(receiverId);
-    if (receiverSocketIds.length > 0) {
-      io.to(receiverSocketIds).emit("newMessage", newMessage);
-    }
+    await enqueueSocketEvent({
+      userIds: [receiverId],
+      event: "newMessage",
+      payload: newMessage,
+    });
 
     res.status(201).json(newMessage);
   } catch (error) {
@@ -125,6 +148,7 @@ export const deleteChat = async (req: UserRequest, res: Response) => {
       },
       { $addToSet: { deletedBy: myId } },
     );
+    await invalidateDirectMessageCaches(myId!.toString(), userToChatId);
 
     res.status(200).json({ message: "Chat deleted successfully" });
   } catch (error) {
@@ -152,11 +176,13 @@ export const editMessage = async (req: UserRequest, res: Response) => {
     message.text = text;
     message.isEdited = true;
     await message.save();
+    await invalidateDirectMessageCaches(myId!.toString(), message.receiverId.toString());
 
-    const receiverSocketIds = getReceiverSocketIds(message.receiverId.toString());
-    if (receiverSocketIds.length > 0) {
-      io.to(receiverSocketIds).emit("messageEdited", message);
-    }
+    await enqueueSocketEvent({
+      userIds: [message.receiverId.toString()],
+      event: "messageEdited",
+      payload: message,
+    });
 
     res.status(200).json(message);
   } catch (error) {
@@ -184,11 +210,13 @@ export const deleteSingleMessage = async (req: UserRequest, res: Response) => {
 
     // Hard delete the message
     await Message.findByIdAndDelete(messageId);
+    await invalidateDirectMessageCaches(myId!.toString(), receiverId);
 
-    const receiverSocketIds = getReceiverSocketIds(receiverId);
-    if (receiverSocketIds.length > 0) {
-      io.to(receiverSocketIds).emit("messageDeleted", messageId);
-    }
+    await enqueueSocketEvent({
+      userIds: [receiverId],
+      event: "messageDeleted",
+      payload: messageId,
+    });
 
     res.status(200).json({ message: "Message deleted successfully", messageId });
   } catch (error) {

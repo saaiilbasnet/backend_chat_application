@@ -4,9 +4,15 @@ import User from "../database/users/userModel.ts";
 import Group from "../database/groups/groupModel.ts";
 import GroupMessage from "../database/groups/groupMessageModel.ts";
 import cloudinary from "../lib/cloudinary.ts";
-import { getReceiverSocketIds, io } from "../lib/socket.ts";
 import { UserRequest } from "../types/global.types.ts";
 import logger from "../lib/logger.ts";
+import {
+  cacheKeys,
+  getCache,
+  invalidateGroupCaches,
+  setCache,
+} from "../lib/cache.ts";
+import { enqueueSocketEvent } from "../lib/queues.ts";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -19,19 +25,18 @@ async function getPopulatedGroup(groupId: string) {
     .populate("admin", ADMIN_FIELDS);
 }
 
-function emitToMembers(
+async function emitToMembers(
   memberIds: string[],
   event: string,
   payload: unknown,
   excludeId?: string,
 ) {
-  for (const memberId of memberIds) {
-    if (excludeId && memberId === excludeId) continue;
-    const socketIds = getReceiverSocketIds(memberId);
-    if (socketIds.length > 0) {
-      io.to(socketIds).emit(event, payload);
-    }
-  }
+  await enqueueSocketEvent({
+    userIds: memberIds,
+    event,
+    payload,
+    excludeUserId: excludeId,
+  });
 }
 
 // ─── Controllers ─────────────────────────────────────────────────────────────
@@ -87,7 +92,8 @@ export const createGroup = async (req: UserRequest, res: Response) => {
 
     // Notify all members via socket
     const allMemberIds = [myId, ...dedupedMemberIds];
-    emitToMembers(allMemberIds, "groupCreated", populated);
+    await invalidateGroupCaches(group._id.toString(), allMemberIds);
+    await emitToMembers(allMemberIds, "groupCreated", populated);
 
     return res.status(201).json(populated);
   } catch (error) {
@@ -99,11 +105,15 @@ export const createGroup = async (req: UserRequest, res: Response) => {
 export const getMyGroups = async (req: UserRequest, res: Response) => {
   try {
     const myId = req.user?._id.toString()!;
+    const cacheKey = cacheKeys.myGroups(myId);
+    const cachedGroups = await getCache(cacheKey);
+    if (cachedGroups) return res.status(200).json(cachedGroups);
 
     const groups = await Group.find({ members: myId })
       .populate("members", MEMBER_FIELDS)
       .populate("admin", ADMIN_FIELDS);
 
+    await setCache(cacheKey, groups);
     return res.status(200).json(groups);
   } catch (error) {
     logger.error("Error in getMyGroups: " + (error as Error).message);
@@ -115,6 +125,7 @@ export const getGroupMessages = async (req: UserRequest, res: Response) => {
   try {
     const { groupId } = req.params;
     const myId = req.user?._id.toString()!;
+    const cacheKey = cacheKeys.groupMessages(groupId);
 
     const group = await Group.findById(groupId);
     if (!group) return res.status(404).json({ message: "Group not found" });
@@ -124,10 +135,14 @@ export const getGroupMessages = async (req: UserRequest, res: Response) => {
       return res.status(403).json({ message: "You are not a member of this group" });
     }
 
+    const cachedMessages = await getCache(cacheKey);
+    if (cachedMessages) return res.status(200).json(cachedMessages);
+
     const messages = await GroupMessage.find({ groupId })
       .sort({ createdAt: 1 })
       .populate("senderId", MEMBER_FIELDS);
 
+    await setCache(cacheKey, messages);
     return res.status(200).json(messages);
   } catch (error) {
     logger.error("Error in getGroupMessages: " + (error as Error).message);
@@ -169,7 +184,8 @@ export const sendGroupMessage = async (req: UserRequest, res: Response) => {
     const otherMemberIds = group.members
       .map((m) => m.toString())
       .filter((id) => id !== myId);
-    emitToMembers(otherMemberIds, "newGroupMessage", newMessage);
+    await invalidateGroupCaches(groupId, group.members.map((m) => m.toString()));
+    await emitToMembers(otherMemberIds, "newGroupMessage", newMessage);
 
     return res.status(201).json(newMessage);
   } catch (error) {
@@ -218,7 +234,8 @@ export const addGroupMember = async (req: UserRequest, res: Response) => {
       (m) => m._id.toString(),
     ) ?? [];
 
-    emitToMembers(allMemberIds, "groupMemberAdded", { group: populated });
+    await invalidateGroupCaches(groupId, allMemberIds);
+    await emitToMembers(allMemberIds, "groupMemberAdded", { group: populated });
 
     return res.status(200).json(populated);
   } catch (error) {
@@ -259,10 +276,8 @@ export const removeGroupMember = async (req: UserRequest, res: Response) => {
       await Group.findByIdAndDelete(groupId);
 
       // Notify the leaving user's own sockets
-      const socketIds = getReceiverSocketIds(userId);
-      if (socketIds.length > 0) {
-        io.to(socketIds).emit("groupDeleted", { groupId });
-      }
+      await invalidateGroupCaches(groupId, [userId]);
+      await emitToMembers([userId], "groupDeleted", { groupId });
 
       return res.status(200).json({ message: "Group deleted as no members remain" });
     }
@@ -279,7 +294,8 @@ export const removeGroupMember = async (req: UserRequest, res: Response) => {
 
     // Emit to remaining members AND the removed user
     const notifyIds = [...remainingMembers, userId];
-    emitToMembers(notifyIds, "groupMemberRemoved", { groupId, userId, newAdmin });
+    await invalidateGroupCaches(groupId, notifyIds);
+    await emitToMembers(notifyIds, "groupMemberRemoved", { groupId, userId, newAdmin });
 
     return res.status(200).json({ message: "Member removed successfully" });
   } catch (error) {
@@ -313,10 +329,8 @@ export const leaveGroup = async (req: UserRequest, res: Response) => {
       await GroupMessage.deleteMany({ groupId });
       await Group.findByIdAndDelete(groupId);
 
-      const socketIds = getReceiverSocketIds(myId);
-      if (socketIds.length > 0) {
-        io.to(socketIds).emit("groupDeleted", { groupId });
-      }
+      await invalidateGroupCaches(groupId, [myId]);
+      await emitToMembers([myId], "groupDeleted", { groupId });
 
       return res.status(200).json({ message: "Group deleted as no members remain" });
     }
@@ -332,7 +346,8 @@ export const leaveGroup = async (req: UserRequest, res: Response) => {
     await Group.findByIdAndUpdate(groupId, { $pull: { members: myId } });
 
     const notifyIds = [...remainingMembers, myId];
-    emitToMembers(notifyIds, "groupMemberRemoved", { groupId, userId: myId, newAdmin });
+    await invalidateGroupCaches(groupId, notifyIds);
+    await emitToMembers(notifyIds, "groupMemberRemoved", { groupId, userId: myId, newAdmin });
 
     return res.status(200).json({ message: "Left the group successfully" });
   } catch (error) {
@@ -368,7 +383,8 @@ export const updateGroup = async (req: UserRequest, res: Response) => {
       .populate("admin", ADMIN_FIELDS);
 
     const memberIds = group.members.map((m) => m.toString());
-    emitToMembers(memberIds, "groupUpdated", updated);
+    await invalidateGroupCaches(groupId, memberIds);
+    await emitToMembers(memberIds, "groupUpdated", updated);
 
     return res.status(200).json(updated);
   } catch (error) {
@@ -394,7 +410,8 @@ export const deleteGroup = async (req: UserRequest, res: Response) => {
     await GroupMessage.deleteMany({ groupId });
     await Group.findByIdAndDelete(groupId);
 
-    emitToMembers(memberIds, "groupDeleted", { groupId });
+    await invalidateGroupCaches(groupId, memberIds);
+    await emitToMembers(memberIds, "groupDeleted", { groupId });
 
     return res.status(200).json({ message: "Group deleted successfully" });
   } catch (error) {
@@ -426,7 +443,8 @@ export const editGroupMessage = async (req: UserRequest, res: Response) => {
       const otherMemberIds = group.members
         .map((m) => m.toString())
         .filter((id) => id !== myId);
-      emitToMembers(otherMemberIds, "groupMessageEdited", message);
+      await invalidateGroupCaches(message.groupId.toString(), group.members.map((m) => m.toString()));
+      await emitToMembers(otherMemberIds, "groupMessageEdited", message);
     }
 
     return res.status(200).json(message);
@@ -458,7 +476,8 @@ export const deleteGroupMessage = async (req: UserRequest, res: Response) => {
       const otherMemberIds = group.members
         .map((m) => m.toString())
         .filter((id) => id !== myId);
-      emitToMembers(otherMemberIds, "groupMessageDeleted", { groupId, messageId });
+      await invalidateGroupCaches(groupId, group.members.map((m) => m.toString()));
+      await emitToMembers(otherMemberIds, "groupMessageDeleted", { groupId, messageId });
     }
 
     return res.status(200).json({ message: "Message deleted successfully", messageId });

@@ -29,4 +29,7 @@ export const env = {
   SMTP_USER: process.env.SMTP_USER || process.env.EMAIL_USER || "basnetssahil@gmail.com",
   SMTP_PASS: process.env.SMTP_PASS || process.env.APP_PASSWORD,
   SMTP_FROM_EMAIL: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || process.env.EMAIL_USER || "basnetssahil@gmail.com",
+  REDIS_URL: process.env.REDIS_URL,
+  CACHE_TTL_SECONDS: Number(process.env.CACHE_TTL_SECONDS || 60),
+  EMAIL_QUEUE_CONCURRENCY: Number(process.env.EMAIL_QUEUE_CONCURRENCY || 5),
 };
