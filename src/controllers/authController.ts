@@ -11,6 +11,20 @@ function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+const validatePassword = (password: string) => {
+  if (!password) return "Password is required";
+  if (password.length < 8) return "Password must be at least 8 characters";
+  if (!/\d/.test(password)) return "Password must contain at least one numeric value";
+  if (!/[@#$!%*?&.]/.test(password)) return "Password must contain at least one special symbol";
+  return null;
+};
+
+const getOtpWaitMs = (count: number) => {
+  if (count === 1) return 120 * 1000;
+  if (count >= 2) return 300 * 1000;
+  return 30 * 1000;
+};
+
 export const register = async (req: UserRequest, res: Response) => {
   const { fullName, email, password } = req.body;
   try {
@@ -19,21 +33,8 @@ export const register = async (req: UserRequest, res: Response) => {
         message: "All fields are required!",
       });
     }
-    if (password.length < 8) {
-      return res.status(400).json({
-        message: "Password must be at least 8 characters",
-      });
-    }
-    if (!/\d/.test(password)) {
-      return res.status(400).json({
-        message: "Password must contain at least one numeric value",
-      });
-    }
-    if (!/[@#$!%*?&.]/.test(password)) {
-      return res.status(400).json({
-        message: "Password must contain at least one special symbol",
-      });
-    }
+    const passwordError = validatePassword(password);
+    if (passwordError) return res.status(400).json({ message: passwordError });
 
     let user = await User.findOne({ email });
     if (user) {
@@ -267,9 +268,7 @@ export const resendOtp = async (req: UserRequest, res: Response) => {
       const timeSinceLastSent = now - user.otpLastSentAt.getTime();
       const count = user.otpResendCount || 0;
       
-      let requiredWaitMs = 30 * 1000;
-      if (count === 1) requiredWaitMs = 120 * 1000; // 2 mins
-      else if (count >= 2) requiredWaitMs = 300 * 1000; // 5 mins
+      const requiredWaitMs = getOtpWaitMs(count);
 
       if (timeSinceLastSent < requiredWaitMs) {
         const remainingSeconds = Math.ceil((requiredWaitMs - timeSinceLastSent) / 1000);
@@ -294,5 +293,84 @@ export const resendOtp = async (req: UserRequest, res: Response) => {
   } catch (error) {
     logger.error("Error in resendOtp controller: " + (error as Error).message);
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const forgotPassword = async (req: UserRequest, res: Response) => {
+  const { email } = req.body;
+  try {
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const now = Date.now();
+    if (user.passwordResetOtpLastSentAt) {
+      const timeSinceLastSent = now - user.passwordResetOtpLastSentAt.getTime();
+      const count = user.passwordResetOtpResendCount || 0;
+      const requiredWaitMs = getOtpWaitMs(count);
+
+      if (timeSinceLastSent < requiredWaitMs) {
+        const remainingSeconds = Math.ceil((requiredWaitMs - timeSinceLastSent) / 1000);
+        return res.status(429).json({
+          message: `Please wait ${remainingSeconds} seconds before requesting another OTP`,
+          remainingSeconds,
+        });
+      }
+    }
+
+    const otp = generateOTP();
+    user.passwordResetOtp = otp;
+    user.passwordResetOtpExpiresAt = new Date(now + 10 * 60 * 1000);
+    user.passwordResetOtpLastSentAt = new Date(now);
+    user.passwordResetOtpResendCount = (user.passwordResetOtpResendCount || 0) + 1;
+    await user.save();
+
+    await enqueueEmail({
+      to: email,
+      subject: "Your Zeno password reset OTP",
+      html: `<p>Your password reset code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
+    });
+
+    return res.status(200).json({ message: "Password reset OTP sent to your email", email });
+  } catch (error) {
+    logger.error("Error in forgotPassword controller: " + (error as Error).message);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const resetPassword = async (req: UserRequest, res: Response) => {
+  const { email, otp, password } = req.body;
+  try {
+    if (!email || !otp || !password) {
+      return res.status(400).json({ message: "Email, OTP, and password are required" });
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) return res.status(400).json({ message: passwordError });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (user.passwordResetOtp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (!user.passwordResetOtpExpiresAt || user.passwordResetOtpExpiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ message: "OTP has expired" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+    user.passwordResetOtp = undefined;
+    user.passwordResetOtpExpiresAt = undefined;
+    user.passwordResetOtpLastSentAt = undefined;
+    user.passwordResetOtpResendCount = 0;
+    await user.save();
+
+    return res.status(200).json({ message: "Password reset successfully" });
+  } catch (error) {
+    logger.error("Error in resetPassword controller: " + (error as Error).message);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
