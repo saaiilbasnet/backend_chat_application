@@ -28,9 +28,15 @@ const getOtpWaitMs = (count: number) => {
 };
 
 const sendOtpEmailInBackground = (data: { to: string; subject: string; html: string }) => {
-  void enqueueEmail(data).catch((error) => {
-    logger.error("Error queueing OTP email: " + (error as Error).message);
-  });
+  void enqueueEmail(data)
+    .then((sentOrQueued) => {
+      if (!sentOrQueued) {
+        logger.error(`OTP email was not sent or queued for ${data.to}`);
+      }
+    })
+    .catch((error) => {
+      logger.error("Error queueing OTP email: " + (error as Error).message);
+    });
 };
 
 export const register = async (req: UserRequest, res: Response) => {

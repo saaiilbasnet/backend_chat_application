@@ -55,6 +55,7 @@ const socketEventQueueEvents = connection ? new QueueEvents("socket-events", { c
 let emailWorker: Worker<EmailJobData> | null = null;
 let socketEventWorker: Worker<SocketEventJobData> | null = null;
 let hasLoggedDirectEmailFallback = false;
+const EMAIL_QUEUE_ADD_TIMEOUT_MS = 2000;
 
 const emitSocketEvent = ({ userIds, event, payload, excludeUserId }: SocketEventJobData) => {
   for (const userId of userIds) {
@@ -76,7 +77,13 @@ export const enqueueEmail = async (data: EmailJobData) => {
   }
 
   try {
-    await emailQueue.add("send-email", data);
+    const addJob = emailQueue.add("send-email", data);
+    await Promise.race([
+      addJob,
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Timed out adding email job to queue")), EMAIL_QUEUE_ADD_TIMEOUT_MS);
+      }),
+    ]);
     return true;
   } catch (error) {
     logger.error("Error adding email job to queue: " + (error as Error).message);
