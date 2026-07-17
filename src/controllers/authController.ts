@@ -27,6 +27,12 @@ const getOtpWaitMs = (count: number) => {
   return 30 * 1000;
 };
 
+const sendOtpEmailInBackground = (data: { to: string; subject: string; html: string }) => {
+  void enqueueEmail(data).catch((error) => {
+    logger.error("Error queueing OTP email: " + (error as Error).message);
+  });
+};
+
 export const register = async (req: UserRequest, res: Response) => {
   const { fullName, email, password } = req.body;
   try {
@@ -76,7 +82,7 @@ export const register = async (req: UserRequest, res: Response) => {
 
     await user.save();
 
-    await enqueueEmail({
+    sendOtpEmailInBackground({
       to: email,
       subject: "Your OTP for Zeno Chat Verification",
       html: `<p>Your verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
@@ -290,7 +296,7 @@ export const resendOtp = async (req: UserRequest, res: Response) => {
     user.otpResendCount = (user.otpResendCount || 0) + 1;
     await user.save();
 
-    await enqueueEmail({
+    sendOtpEmailInBackground({
       to: email,
       subject: "Your new OTP for Zeno Chat Verification",
       html: `<p>Your new verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
@@ -338,7 +344,7 @@ export const forgotPassword = async (req: UserRequest, res: Response) => {
     user.passwordResetOtpResendCount = (user.passwordResetOtpResendCount || 0) + 1;
     await user.save();
 
-    await enqueueEmail({
+    sendOtpEmailInBackground({
       to: email,
       subject: "Your Zeno password reset OTP",
       html: `<p>Your password reset code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
