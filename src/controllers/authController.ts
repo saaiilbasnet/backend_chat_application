@@ -297,12 +297,17 @@ export const resendOtp = async (req: UserRequest, res: Response) => {
 };
 
 export const forgotPassword = async (req: UserRequest, res: Response) => {
-  const { email } = req.body;
+  const email = String(req.body.email || "").trim().toLowerCase();
   try {
     if (!email) return res.status(400).json({ message: "Email is required" });
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) {
+      return res.status(200).json({
+        message: "If an account exists for this email, a reset OTP will be sent.",
+        email,
+      });
+    }
 
     const now = Date.now();
     if (user.passwordResetOtpLastSentAt) {
@@ -340,7 +345,8 @@ export const forgotPassword = async (req: UserRequest, res: Response) => {
 };
 
 export const resetPassword = async (req: UserRequest, res: Response) => {
-  const { email, otp, password } = req.body;
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const { otp, password } = req.body;
   try {
     if (!email || !otp || !password) {
       return res.status(400).json({ message: "Email, OTP, and password are required" });
