@@ -10,7 +10,7 @@
     "seed": "tsx src/seeds/user.seed.ts",
     "typecheck": "tsc --noEmit",
     "ci": "npm run typecheck",
-    "prepare": "husky"
+    "prepare": "command -v husky >/dev/null 2>&1 && husky || true"
   },
   "keywords": [],
   "author": "",
