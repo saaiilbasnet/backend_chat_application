@@ -6,11 +6,11 @@ import { connectDB } from "./src/database/connection.ts";
 import logger from "./src/lib/logger.ts";
 import { connectCache, disconnectCache } from "./src/lib/cache.ts";
 import { closeQueues, startQueueWorkers } from "./src/lib/queues.ts";
+import { env } from "./src/config/env.ts";
 
 const startServer = () => {
-  const port = Number(process.env.PORT) || 3000;
-  server.listen(port, "0.0.0.0", () => {
-    logger.info(`Server started at http://0.0.0.0:${port}`);
+  server.listen(env.PORT, "0.0.0.0", () => {
+    logger.info(`Server started at http://0.0.0.0:${env.PORT}`);
   });
   connectDB();
   connectCache();

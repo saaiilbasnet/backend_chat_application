@@ -12,6 +12,7 @@ import {
   setCache,
 } from "../lib/cache.ts";
 import { enqueueSocketEvent } from "../lib/queues.ts";
+import { validateDataImage } from "../lib/imageUpload.ts";
 
 export const getUsersForSidebar = async (req: UserRequest, res: Response) => {
   try {
@@ -106,8 +107,14 @@ export const sendMessage = async (req: UserRequest, res: Response) => {
 
     let imageUrl;
     if (image) {
+      const imageValidation = validateDataImage(image);
+      if (!imageValidation.valid) {
+        return res.status(400).json({ message: imageValidation.message });
+      }
       // Upload base64 image to cloudinary
-      const uploadResponse = await cloudinary.uploader.upload(image);
+      const uploadResponse = await cloudinary.uploader.upload(image, {
+        resource_type: "image",
+      });
       imageUrl = uploadResponse.secure_url;
     }
 

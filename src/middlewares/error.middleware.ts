@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import logger from "../lib/logger.ts";
+import { env } from "../config/env.ts";
 
 interface HttpError extends Error {
     statusCode?: number;
@@ -25,6 +26,6 @@ export const errorHandler = (
     res.status(statusCode).json({
         success: false,
         message,
-        ...(process.env.NODE_ENV === "development" && { stack: error.stack }),
+        ...(env.NODE_ENV === "development" && { stack: error.stack }),
     });
 };

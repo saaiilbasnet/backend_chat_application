@@ -6,6 +6,8 @@ import { generateToken } from "../lib/utils.ts";
 import { UserRequest } from "../types/global.types.ts";
 import logger from "../lib/logger.ts";
 import { enqueueEmail } from "../lib/queues.ts";
+import { validateDataImage } from "../lib/imageUpload.ts";
+import { env } from "../config/env.ts";
 
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -136,8 +138,8 @@ export const logout = (req: UserRequest, res: Response) => {
     res.cookie("jwt", "", {
       maxAge: 0,
       httpOnly: true,
-      sameSite: process.env.NODE_ENV !== "development" ? "none" : "strict",
-      secure: process.env.NODE_ENV !== "development",
+      sameSite: env.NODE_ENV !== "development" ? "none" : "strict",
+      secure: env.NODE_ENV !== "development",
     });
     res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
@@ -157,7 +159,13 @@ export const updateProfile = async (req: UserRequest, res: Response) => {
 
     let uploadResponse;
     if (profilePic) {
-      uploadResponse = await cloudinary.uploader.upload(profilePic);
+      const imageValidation = validateDataImage(profilePic);
+      if (!imageValidation.valid) {
+        return res.status(400).json({ message: imageValidation.message });
+      }
+      uploadResponse = await cloudinary.uploader.upload(profilePic, {
+        resource_type: "image",
+      });
     }
     const updatedUser = await User.findByIdAndUpdate(
       userId,
@@ -178,8 +186,7 @@ export const updateProfile = async (req: UserRequest, res: Response) => {
 
 export const checkAuth = (req: UserRequest, res: Response) => {
   try {
-    // Generate a fresh token and include it in the response so the
-    // frontend can persist it in sessionStorage after a page refresh.
+    // Generate a fresh token so the HTTP-only cookie stays alive after refresh.
     const token = generateToken(req.user!._id, res);
     const user = req.user as typeof req.user & { toObject?: () => object };
     const safeUser = user?.toObject ? user.toObject() : user;

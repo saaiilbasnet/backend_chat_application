@@ -6,15 +6,15 @@ import { env } from "../config/env.ts";
 type JwtUserId = string | Types.ObjectId;
 
 export const generateToken = (userId: JwtUserId, res: Response) => {
-  const token = jwt.sign({ userId }, env.JWT_SECRET, {
+  const token = jwt.sign({ userId: userId.toString() }, env.JWT_SECRET, {
     expiresIn: "7d",
   });
 
   res.cookie("jwt", token, {
     maxAge: 7 * 24 * 60 * 60 * 1000, 
     httpOnly: true, 
-    sameSite: process.env.NODE_ENV !== "development" ? "none" : "strict",
-    secure: process.env.NODE_ENV !== "development",
+    sameSite: env.NODE_ENV !== "development" ? "none" : "strict",
+    secure: env.NODE_ENV !== "development",
   });
 
   return token;

@@ -1,16 +1,16 @@
 import { Server, Socket } from "socket.io";
 import http from "http";
 import express from "express";
+import jwt, { type JwtPayload } from "jsonwebtoken";
 import type { UserIdType } from "../types/global.types.ts";
 import logger from "./logger.ts";
+import { env } from "../config/env.ts";
 
 const app = express();
 const server = http.createServer(app);
 
 // CLIENT_URL can be a comma-separated list of allowed origins
-const clientUrls = process.env.CLIENT_URL
-  ? process.env.CLIENT_URL.split(",").map((url) => url.trim()).filter(Boolean)
-  : [];
+const clientUrls = env.CLIENT_URL.split(",").map((url) => url.trim()).filter(Boolean);
 
 const allowedOrigins = ["http://localhost:5173", ...clientUrls];
 
@@ -24,22 +24,62 @@ const io = new Server(server, {
 // userId -> socketIds. A user can have multiple tabs/devices connected.
 const userSocketMap: Record<string, Set<string>> = {};
 
-//   Normalize userId into a string usable as an object key
+interface SocketAuthPayload extends JwtPayload {
+  userId: string;
+}
 
-function normalizeUserId(userId: string | string[] | undefined): string | null {
-  return typeof userId === "string" ? userId : null;
+type AuthenticatedSocket = Socket & {
+  data: {
+    userId?: string;
+  };
+};
+
+const parseCookies = (cookieHeader: string | undefined) => {
+  return Object.fromEntries(
+    (cookieHeader ?? "")
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const [key, ...value] = part.split("=");
+        return [decodeURIComponent(key), decodeURIComponent(value.join("="))];
+      }),
+  );
+};
+
+const isSocketAuthPayload = (payload: string | JwtPayload): payload is SocketAuthPayload => {
+  return typeof payload !== "string" && typeof payload.userId === "string";
+};
+
+function verifySocketUserId(socket: Socket): string | null {
+  const token = parseCookies(socket.handshake.headers.cookie).jwt;
+  if (!token || token === "undefined" || token === "null") return null;
+
+  try {
+    const decoded = jwt.verify(token, env.JWT_SECRET);
+    return isSocketAuthPayload(decoded) ? decoded.userId : null;
+  } catch {
+    return null;
+  }
 }
 
 export function getReceiverSocketIds(userId: UserIdType): string[] {
   return Array.from(userSocketMap[String(userId)] ?? []);
 }
 
-io.use((socket, next) => {
-  logger.info(`Socket connection attempt: ${socket.id} from ${socket.handshake.address}`);
+io.use((socket: AuthenticatedSocket, next) => {
+  const userId = verifySocketUserId(socket);
+  if (!userId) {
+    logger.warn(`Rejected unauthenticated socket connection: ${socket.id}`);
+    next(new Error("Unauthorized"));
+    return;
+  }
+
+  socket.data.userId = userId;
   next();
 });
 
-io.on("connection", (socket: Socket) => {
+io.on("connection", (socket: AuthenticatedSocket) => {
   logger.info(`A user connected: ${socket.id}`);
 
   // Log all incoming events
@@ -52,7 +92,7 @@ io.on("connection", (socket: Socket) => {
   //   logger.debug(`Socket OUT [${event}] to ${socket.id}:`, args);
   // });
 
-  const userId = normalizeUserId(socket.handshake.query.userId);
+  const userId = socket.data.userId;
 
   if (userId) {
     if (!userSocketMap[userId]) {

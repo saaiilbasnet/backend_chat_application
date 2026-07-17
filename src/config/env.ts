@@ -7,8 +7,7 @@ const requiredEnv = [
   "CLOUDINARY_CLOUD_NAME",
   "CLOUDINARY_API_KEY",
   "CLOUDINARY_API_SECRET",
-  "MONGODB_URI",
-  "CLIENT_URL"
+  "MONGODB_URI"
 ] as const;
 
 for (const key of requiredEnv) {
@@ -44,12 +43,14 @@ const numberFromEnv = (key: string, fallback: number) => {
 };
 
 export const env = {
+  NODE_ENV: optionalString(process.env.NODE_ENV) ?? "development",
+  PORT: numberFromEnv("PORT", 3000),
   JWT_SECRET: requiredString("JWT_SECRET"),
   CLOUDINARY_CLOUD_NAME: requiredString("CLOUDINARY_CLOUD_NAME"),
   CLOUDINARY_API_KEY: requiredString("CLOUDINARY_API_KEY"),
   CLOUDINARY_API_SECRET: requiredString("CLOUDINARY_API_SECRET"),
   MONGODB_URI: requiredString("MONGODB_URI"),
-  CLIENT_URL: requiredString("CLIENT_URL"),
+  CLIENT_URL: optionalString(process.env.CLIENT_URL) ?? "",
   SMTP_HOST: process.env.SMTP_HOST || "smtp.gmail.com",
   SMTP_PORT: numberFromEnv("SMTP_PORT", 465),
   SMTP_USER: optionalString(process.env.SMTP_USER) || optionalString(process.env.EMAIL_USER) || "basnetssahil@gmail.com",

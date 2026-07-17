@@ -1,6 +1,7 @@
 import winston from "winston";
 import path from "path";
 import fs from "fs";
+import { env } from "../config/env.ts";
 
 // Ensure logs directory exists
 const logsDir = path.resolve("logs");
@@ -30,7 +31,7 @@ const fileFormat = combine(
 );
 
 const logger = winston.createLogger({
-  level: process.env.NODE_ENV === "production" ? "warn" : "debug",
+  level: env.NODE_ENV === "production" ? "warn" : "debug",
   transports: [
     // Console — all levels in dev, only warn+ in prod
     new winston.transports.Console({

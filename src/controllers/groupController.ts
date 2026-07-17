@@ -13,6 +13,7 @@ import {
   setCache,
 } from "../lib/cache.ts";
 import { enqueueSocketEvent } from "../lib/queues.ts";
+import { validateDataImage } from "../lib/imageUpload.ts";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -185,7 +186,13 @@ export const sendGroupMessage = async (req: UserRequest, res: Response) => {
 
     let imageUrl: string | undefined;
     if (image) {
-      const uploadResponse = await cloudinary.uploader.upload(image);
+      const imageValidation = validateDataImage(image);
+      if (!imageValidation.valid) {
+        return res.status(400).json({ message: imageValidation.message });
+      }
+      const uploadResponse = await cloudinary.uploader.upload(image, {
+        resource_type: "image",
+      });
       imageUrl = uploadResponse.secure_url;
     }
 
