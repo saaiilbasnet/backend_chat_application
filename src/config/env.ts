@@ -42,6 +42,21 @@ const numberFromEnv = (key: string, fallback: number) => {
   return value;
 };
 
+const redisUrl = optionalString(process.env.REDIS_URL);
+const isRenderRuntime = Boolean(optionalString(process.env.RENDER));
+const redisHostname = (() => {
+  if (!redisUrl) return undefined;
+
+  try {
+    return new URL(redisUrl).hostname;
+  } catch {
+    throw new Error("Environment variable REDIS_URL must be a valid URL");
+  }
+})();
+const isLocalRedisUrl = redisHostname
+  ? ["localhost", "127.0.0.1", "::1"].includes(redisHostname)
+  : false;
+
 export const env = {
   NODE_ENV: optionalString(process.env.NODE_ENV) ?? "development",
   PORT: numberFromEnv("PORT", 3000),
@@ -56,7 +71,7 @@ export const env = {
   SMTP_USER: optionalString(process.env.SMTP_USER) || optionalString(process.env.EMAIL_USER) || "basnetssahil@gmail.com",
   SMTP_PASS: optionalString(process.env.SMTP_PASS) || optionalString(process.env.APP_PASSWORD),
   SMTP_FROM_EMAIL: optionalString(process.env.SMTP_FROM_EMAIL) || optionalString(process.env.SMTP_USER) || optionalString(process.env.EMAIL_USER) || "basnetssahil@gmail.com",
-  REDIS_URL: optionalString(process.env.REDIS_URL),
+  REDIS_URL: isRenderRuntime && isLocalRedisUrl ? undefined : redisUrl,
   CACHE_TTL_SECONDS: numberFromEnv("CACHE_TTL_SECONDS", 60),
   EMAIL_QUEUE_CONCURRENCY: numberFromEnv("EMAIL_QUEUE_CONCURRENCY", 5),
 } as const;
