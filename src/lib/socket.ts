@@ -67,6 +67,21 @@ export function getReceiverSocketIds(userId: UserIdType): string[] {
   return Array.from(userSocketMap[String(userId)] ?? []);
 }
 
+export function emitToUsers(
+  userIds: string[],
+  event: string,
+  payload: unknown,
+  excludeUserId?: string,
+): void {
+  for (const userId of userIds) {
+    if (excludeUserId && userId === excludeUserId) continue;
+    const socketIds = getReceiverSocketIds(userId);
+    if (socketIds.length > 0) {
+      io.to(socketIds).emit(event, payload);
+    }
+  }
+}
+
 io.use((socket: AuthenticatedSocket, next) => {
   const userId = verifySocketUserId(socket);
   if (!userId) {

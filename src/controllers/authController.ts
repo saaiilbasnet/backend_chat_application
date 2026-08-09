@@ -5,7 +5,7 @@ import cloudinary from "../lib/cloudinary.ts";
 import { generateToken } from "../lib/utils.ts";
 import { UserRequest } from "../types/global.types.ts";
 import logger from "../lib/logger.ts";
-import { enqueueEmail } from "../lib/queues.ts";
+import { sendEmail } from "../lib/email.ts";
 import { validateDataImage } from "../lib/imageUpload.ts";
 import { env } from "../config/env.ts";
 
@@ -28,14 +28,14 @@ const getOtpWaitMs = (count: number) => {
 };
 
 const sendOtpEmailInBackground = (data: { to: string; subject: string; html: string }) => {
-  void enqueueEmail(data)
-    .then((sentOrQueued) => {
-      if (!sentOrQueued) {
-        logger.error(`OTP email was not sent or queued for ${data.to}`);
+  void sendEmail(data)
+    .then((sent) => {
+      if (!sent) {
+        logger.error(`OTP email was not sent for ${data.to}`);
       }
     })
     .catch((error) => {
-      logger.error("Error queueing OTP email: " + (error as Error).message);
+      logger.error("Error sending OTP email: " + (error as Error).message);
     });
 };
 

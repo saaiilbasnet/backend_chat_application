@@ -5,7 +5,6 @@ import "./src/app.ts";
 import { connectDB } from "./src/database/connection.ts";
 import logger from "./src/lib/logger.ts";
 import { connectCache, disconnectCache } from "./src/lib/cache.ts";
-import { closeQueues, startQueueWorkers } from "./src/lib/queues.ts";
 import { env } from "./src/config/env.ts";
 
 const startServer = () => {
@@ -14,7 +13,6 @@ const startServer = () => {
   });
   connectDB();
   connectCache();
-  startQueueWorkers();
 };
 
 startServer();
@@ -22,7 +20,7 @@ startServer();
 const shutdown = async (signal: string) => {
   logger.info(`${signal} received. Shutting down server.`);
   server.close(async () => {
-    await Promise.all([disconnectCache(), closeQueues()]);
+    await disconnectCache();
     process.exit(0);
   });
 };

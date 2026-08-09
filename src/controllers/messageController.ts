@@ -11,7 +11,7 @@ import {
   invalidateDirectMessageCaches,
   setCache,
 } from "../lib/cache.ts";
-import { enqueueSocketEvent } from "../lib/queues.ts";
+import { emitToUsers } from "../lib/socket.ts";
 import { validateDataImage } from "../lib/imageUpload.ts";
 
 export const getUsersForSidebar = async (req: UserRequest, res: Response) => {
@@ -128,11 +128,7 @@ export const sendMessage = async (req: UserRequest, res: Response) => {
     await newMessage.save();
     await invalidateDirectMessageCaches(senderId!.toString(), receiverId);
 
-    await enqueueSocketEvent({
-      userIds: [receiverId],
-      event: "newMessage",
-      payload: newMessage,
-    });
+    emitToUsers([receiverId], "newMessage", newMessage);
 
     res.status(201).json(newMessage);
   } catch (error) {
@@ -185,11 +181,7 @@ export const editMessage = async (req: UserRequest, res: Response) => {
     await message.save();
     await invalidateDirectMessageCaches(myId!.toString(), message.receiverId.toString());
 
-    await enqueueSocketEvent({
-      userIds: [message.receiverId.toString()],
-      event: "messageEdited",
-      payload: message,
-    });
+    emitToUsers([message.receiverId.toString()], "messageEdited", message);
 
     res.status(200).json(message);
   } catch (error) {
@@ -219,11 +211,7 @@ export const deleteSingleMessage = async (req: UserRequest, res: Response) => {
     await Message.findByIdAndDelete(messageId);
     await invalidateDirectMessageCaches(myId!.toString(), receiverId);
 
-    await enqueueSocketEvent({
-      userIds: [receiverId],
-      event: "messageDeleted",
-      payload: messageId,
-    });
+    emitToUsers([receiverId], "messageDeleted", messageId);
 
     res.status(200).json({ message: "Message deleted successfully", messageId });
   } catch (error) {

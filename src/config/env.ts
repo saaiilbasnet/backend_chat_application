@@ -73,5 +73,4 @@ export const env = {
   SMTP_FROM_EMAIL: optionalString(process.env.SMTP_FROM_EMAIL) || optionalString(process.env.SMTP_USER) || optionalString(process.env.EMAIL_USER) || "basnetssahil@gmail.com",
   REDIS_URL: isRenderRuntime && isLocalRedisUrl ? undefined : redisUrl,
   CACHE_TTL_SECONDS: numberFromEnv("CACHE_TTL_SECONDS", 60),
-  EMAIL_QUEUE_CONCURRENCY: numberFromEnv("EMAIL_QUEUE_CONCURRENCY", 5),
 } as const;

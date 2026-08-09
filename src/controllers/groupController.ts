@@ -12,7 +12,7 @@ import {
   invalidateGroupCaches,
   setCache,
 } from "../lib/cache.ts";
-import { enqueueSocketEvent } from "../lib/queues.ts";
+import { emitToUsers } from "../lib/socket.ts";
 import { validateDataImage } from "../lib/imageUpload.ts";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -51,12 +51,7 @@ async function emitToMembers(
   payload: unknown,
   excludeId?: string,
 ) {
-  await enqueueSocketEvent({
-    userIds: memberIds,
-    event,
-    payload,
-    excludeUserId: excludeId,
-  });
+  emitToUsers(memberIds, event, payload, excludeId);
 }
 
 // ─── Controllers ─────────────────────────────────────────────────────────────

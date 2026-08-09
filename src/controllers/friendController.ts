@@ -9,7 +9,7 @@ import {
   invalidateUserCaches,
   setCache,
 } from "../lib/cache.ts";
-import { enqueueSocketEvent } from "../lib/queues.ts";
+import { emitToUsers } from "../lib/socket.ts";
 
 const publicUserFields = "_id fullName email profilePic";
 
@@ -136,18 +136,14 @@ export const sendFriendRequest = async (req: UserRequest, res: Response) => {
       ]);
       await invalidateUserCaches(myId, receiverId);
 
-      await enqueueSocketEvent({
-        userIds: [receiverId],
-        event: "friendRequestAccepted",
-        payload: {
+      emitToUsers([receiverId], "friendRequestAccepted", {
           user: {
             _id: me._id,
             fullName: me.fullName,
             email: me.email,
             profilePic: me.profilePic,
           },
-        },
-      });
+        });
 
       return res.status(200).json({ message: "Friend request accepted" });
     }
@@ -158,18 +154,14 @@ export const sendFriendRequest = async (req: UserRequest, res: Response) => {
     ]);
     await invalidateUserCaches(myId, receiverId);
 
-    await enqueueSocketEvent({
-      userIds: [receiverId],
-      event: "friendRequestReceived",
-      payload: {
+    emitToUsers([receiverId], "friendRequestReceived", {
         user: {
           _id: me._id,
           fullName: me.fullName,
           email: me.email,
           profilePic: me.profilePic,
         },
-      },
-    });
+      });
 
     res.status(200).json({ message: "Friend request sent" });
   } catch (error) {
@@ -205,18 +197,14 @@ export const acceptFriendRequest = async (req: UserRequest, res: Response) => {
     ]);
     await invalidateUserCaches(myId, requesterId);
 
-    await enqueueSocketEvent({
-      userIds: [requesterId],
-      event: "friendRequestAccepted",
-      payload: {
+    emitToUsers([requesterId], "friendRequestAccepted", {
         user: {
           _id: me._id,
           fullName: me.fullName,
           email: me.email,
           profilePic: me.profilePic,
         },
-      },
-    });
+      });
 
     res.status(200).json({ message: "Friend request accepted" });
   } catch (error) {
