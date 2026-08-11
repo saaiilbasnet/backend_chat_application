@@ -1,9 +1,11 @@
 services:
   - type: web
     name: backend-chat-application
-    runtime: docker
+    runtime: node
     plan: free
     branch: main
+    buildCommand: npm ci
+    startCommand: npm start
     healthCheckPath: /
     autoDeployTrigger: commit
     envVars:
@@ -11,13 +13,6 @@ services:
         value: production
       - key: PORT
         value: 3001
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: backend-chat-redis
-          property: connectionString
-      - key: CACHE_TTL_SECONDS
-        value: 60
       - key: JWT_SECRET
         sync: false
       - key: CLOUDINARY_CLOUD_NAME
@@ -40,10 +35,3 @@ services:
         sync: false
       - key: SMTP_FROM_EMAIL
         sync: false
-
-  - type: keyvalue
-    name: backend-chat-redis
-    plan: free
-    ipAllowList: []
-    maxmemoryPolicy: allkeys-lru
-    persistenceMode: off

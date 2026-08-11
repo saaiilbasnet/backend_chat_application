@@ -3,12 +3,6 @@ import mongoose from "mongoose";
 import User from "../database/users/userModel.ts";
 import { UserRequest } from "../types/global.types.ts";
 import logger from "../lib/logger.ts";
-import {
-  cacheKeys,
-  getCache,
-  invalidateUserCaches,
-  setCache,
-} from "../lib/cache.ts";
 import { emitToUsers } from "../lib/socket.ts";
 
 const publicUserFields = "_id fullName email profilePic";
@@ -17,11 +11,6 @@ const isValidObjectId = (id: string) => mongoose.Types.ObjectId.isValid(id);
 
 export const getFriendState = async (req: UserRequest, res: Response) => {
   try {
-    const userId = req.user?._id.toString()!;
-    const cacheKey = cacheKeys.friendState(userId);
-    const cachedState = await getCache(cacheKey);
-    if (cachedState) return res.status(200).json(cachedState);
-
     const me = await User.findById(req.user?._id)
       .select("friends friendRequestsSent friendRequestsReceived blockedUsers")
       .populate("friends", publicUserFields)
@@ -38,7 +27,6 @@ export const getFriendState = async (req: UserRequest, res: Response) => {
       blockedUsers: me.blockedUsers,
     };
 
-    await setCache(cacheKey, friendState);
     res.status(200).json(friendState);
   } catch (error) {
     logger.error("Error in getFriendState: " + (error as Error).message);
@@ -54,10 +42,6 @@ export const searchUsers = async (req: UserRequest, res: Response) => {
     if (query.length < 2) {
       return res.status(200).json([]);
     }
-
-    const cacheKey = cacheKeys.userSearch(myId!.toString(), query);
-    const cachedUsers = await getCache(cacheKey);
-    if (cachedUsers) return res.status(200).json(cachedUsers);
 
     const me = await User.findById(myId).select(
       "friends friendRequestsSent friendRequestsReceived blockedUsers",
@@ -90,7 +74,6 @@ export const searchUsers = async (req: UserRequest, res: Response) => {
       return { ...user.toObject(), relationship };
     });
 
-    await setCache(cacheKey, results);
     res.status(200).json(results);
   } catch (error) {
     logger.error("Error in searchUsers: " + (error as Error).message);
@@ -134,7 +117,6 @@ export const sendFriendRequest = async (req: UserRequest, res: Response) => {
           $pull: { friendRequestsSent: myId },
         }),
       ]);
-      await invalidateUserCaches(myId, receiverId);
 
       emitToUsers([receiverId], "friendRequestAccepted", {
           user: {
@@ -152,7 +134,6 @@ export const sendFriendRequest = async (req: UserRequest, res: Response) => {
       User.findByIdAndUpdate(myId, { $addToSet: { friendRequestsSent: receiverId } }),
       User.findByIdAndUpdate(receiverId, { $addToSet: { friendRequestsReceived: myId } }),
     ]);
-    await invalidateUserCaches(myId, receiverId);
 
     emitToUsers([receiverId], "friendRequestReceived", {
         user: {
@@ -195,7 +176,6 @@ export const acceptFriendRequest = async (req: UserRequest, res: Response) => {
         $pull: { friendRequestsSent: myId },
       }),
     ]);
-    await invalidateUserCaches(myId, requesterId);
 
     emitToUsers([requesterId], "friendRequestAccepted", {
         user: {
@@ -226,7 +206,6 @@ export const declineFriendRequest = async (req: UserRequest, res: Response) => {
       User.findByIdAndUpdate(myId, { $pull: { friendRequestsReceived: requesterId } }),
       User.findByIdAndUpdate(requesterId, { $pull: { friendRequestsSent: myId } }),
     ]);
-    await invalidateUserCaches(myId, requesterId);
 
     res.status(200).json({ message: "Friend request declined" });
   } catch (error) {
@@ -248,7 +227,6 @@ export const unfriendUser = async (req: UserRequest, res: Response) => {
       User.findByIdAndUpdate(myId, { $pull: { friends: friendId } }),
       User.findByIdAndUpdate(friendId, { $pull: { friends: myId } }),
     ]);
-    await invalidateUserCaches(myId, friendId);
 
     res.status(200).json({ message: "User unfriended" });
   } catch (error) {
@@ -283,7 +261,6 @@ export const blockUser = async (req: UserRequest, res: Response) => {
         },
       }),
     ]);
-    await invalidateUserCaches(myId, blockedId);
 
     res.status(200).json({ message: "User blocked" });
   } catch (error) {
@@ -302,7 +279,6 @@ export const unblockUser = async (req: UserRequest, res: Response) => {
     }
 
     await User.findByIdAndUpdate(myId, { $pull: { blockedUsers: blockedId } });
-    await invalidateUserCaches(myId, blockedId);
     res.status(200).json({ message: "User unblocked" });
   } catch (error) {
     logger.error("Error in unblockUser: " + (error as Error).message);

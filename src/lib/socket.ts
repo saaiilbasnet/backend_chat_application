@@ -5,14 +5,10 @@ import jwt, { type JwtPayload } from "jsonwebtoken";
 import type { UserIdType } from "../types/global.types.ts";
 import logger from "./logger.ts";
 import { env } from "../config/env.ts";
+import { allowedOrigins } from "./allowedOrigins.ts";
 
 const app = express();
 const server = http.createServer(app);
-
-// CLIENT_URL can be a comma-separated list of allowed origins
-const clientUrls = env.CLIENT_URL.split(",").map((url) => url.trim()).filter(Boolean);
-
-const allowedOrigins = ["http://localhost:5173", ...clientUrls];
 
 const io = new Server(server, {
   cors: {

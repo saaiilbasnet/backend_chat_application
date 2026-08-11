@@ -5,12 +5,6 @@ import cloudinary from "../lib/cloudinary.ts";
 import { UserRequest } from "../types/global.types.ts";
 import { Response } from "express";
 import logger from "../lib/logger.ts";
-import {
-  cacheKeys,
-  getCache,
-  invalidateDirectMessageCaches,
-  setCache,
-} from "../lib/cache.ts";
 import { emitToUsers } from "../lib/socket.ts";
 import { validateDataImage } from "../lib/imageUpload.ts";
 
@@ -21,10 +15,6 @@ export const getUsersForSidebar = async (req: UserRequest, res: Response) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const cacheKey = cacheKeys.sidebarUsers(loggedInUserId.toString());
-    const cachedUsers = await getCache(cacheKey);
-    if (cachedUsers) return res.status(200).json(cachedUsers);
-
     const me = await User.findById(loggedInUserId).select("friends blockedUsers");
     if (!me) return res.status(404).json({ message: "User not found" });
 
@@ -33,7 +23,6 @@ export const getUsersForSidebar = async (req: UserRequest, res: Response) => {
       blockedUsers: { $ne: loggedInUserId },
     }).select("-password");
 
-    await setCache(cacheKey, filteredUsers);
     res.status(200).json(filteredUsers);
   } catch (error) {
     logger.error("Error in getUsersForSidebar: " + (error as Error).message);
@@ -45,7 +34,6 @@ export const getMessages = async (req: UserRequest, res: Response) => {
   try {
     const { id: userToChatId } = req.params;
     const myId = req?.user?._id;
-    const myIdString = myId?.toString();
     const [me, userToChat] = await Promise.all([
       User.findById(myId).select("friends blockedUsers"),
       User.findById(userToChatId).select("blockedUsers"),
@@ -63,10 +51,6 @@ export const getMessages = async (req: UserRequest, res: Response) => {
       return res.status(403).json({ message: "You can only message accepted friends" });
     }
 
-    const cacheKey = cacheKeys.directMessages(myIdString!, userToChatId);
-    const cachedMessages = await getCache(cacheKey);
-    if (cachedMessages) return res.status(200).json(cachedMessages);
-
     const messages = await Message.find({
       $or: [
         { senderId: myId, receiverId: userToChatId },
@@ -75,7 +59,6 @@ export const getMessages = async (req: UserRequest, res: Response) => {
       deletedBy: { $ne: myId },
     });
 
-    await setCache(cacheKey, messages);
     res.status(200).json(messages);
   } catch (error) {
     logger.error("Error in getMessages controller: " + (error as Error).message);
@@ -126,7 +109,6 @@ export const sendMessage = async (req: UserRequest, res: Response) => {
     });
 
     await newMessage.save();
-    await invalidateDirectMessageCaches(senderId!.toString(), receiverId);
 
     emitToUsers([receiverId], "newMessage", newMessage);
 
@@ -151,7 +133,6 @@ export const deleteChat = async (req: UserRequest, res: Response) => {
       },
       { $addToSet: { deletedBy: myId } },
     );
-    await invalidateDirectMessageCaches(myId!.toString(), userToChatId);
 
     res.status(200).json({ message: "Chat deleted successfully" });
   } catch (error) {
@@ -179,7 +160,6 @@ export const editMessage = async (req: UserRequest, res: Response) => {
     message.text = text;
     message.isEdited = true;
     await message.save();
-    await invalidateDirectMessageCaches(myId!.toString(), message.receiverId.toString());
 
     emitToUsers([message.receiverId.toString()], "messageEdited", message);
 
@@ -209,7 +189,6 @@ export const deleteSingleMessage = async (req: UserRequest, res: Response) => {
 
     // Hard delete the message
     await Message.findByIdAndDelete(messageId);
-    await invalidateDirectMessageCaches(myId!.toString(), receiverId);
 
     emitToUsers([receiverId], "messageDeleted", messageId);
 
