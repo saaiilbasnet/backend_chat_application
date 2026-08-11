@@ -1,5 +1,10 @@
 import { config } from "dotenv";
 config();
+import dns from "node:dns";
+// Render's network has unreliable IPv6 egress; Node prefers IPv6 DNS
+// results by default (RFC 6724), which causes outbound connections
+// (e.g. Gmail SMTP) to hang and time out instead of falling back to IPv4.
+dns.setDefaultResultOrder("ipv4first");
 import { server } from "./src/lib/socket.ts";
 import "./src/app.ts";
 import { connectDB } from "./src/database/connection.ts";
