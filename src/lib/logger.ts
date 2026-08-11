@@ -31,7 +31,7 @@ const fileFormat = combine(
 );
 
 const logger = winston.createLogger({
-  level: env.NODE_ENV === "production" ? "warn" : "debug",
+  level: env.NODE_ENV === "production" ? "info" : "debug",
   transports: [
     // Console — all levels in dev, only warn+ in prod
     new winston.transports.Console({

@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import sgMail from "@sendgrid/mail";
 import { env } from "../config/env.ts";
 import logger from "./logger.ts";
 
@@ -9,39 +9,28 @@ interface SendEmailOptions {
   from?: string;
 }
 
-const smtpPort = Number(env.SMTP_PORT);
-
-const transporter = nodemailer.createTransport({
-  host: env.SMTP_HOST,
-  port: smtpPort,
-  secure: smtpPort === 465,
-  auth: {
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASS,
-  },
-});
+if (env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(env.SENDGRID_API_KEY);
+}
 
 export const sendEmail = async (options: SendEmailOptions) => {
-  if (!env.SMTP_USER || !env.SMTP_PASS) {
-    logger.warn("SMTP credentials not found. Email not sent.");
+  if (!env.SENDGRID_API_KEY) {
+    logger.warn("SENDGRID_API_KEY not found. Email not sent.");
     return false;
   }
 
   try {
-    const result = await transporter.sendMail({
-      from: {
-        name: "Zeno Chat",
-        address: options.from || env.SMTP_FROM_EMAIL,
-      },
+    const [response] = await sgMail.send({
+      from: options.from || env.EMAIL_FROM,
       to: options.to,
       subject: options.subject,
       html: options.html,
     });
 
-    logger.info(`Email sent via SMTP: ${result.messageId}`);
+    logger.info(`Email sent via SendGrid: ${response.statusCode}`);
     return true;
   } catch (error) {
-    logger.error("Error sending email via SMTP: " + (error as Error).message);
+    logger.error("Error sending email via SendGrid: " + (error as Error).message);
     return false;
   }
 };

@@ -51,9 +51,6 @@ export const env = {
   CLOUDINARY_API_SECRET: requiredString("CLOUDINARY_API_SECRET"),
   MONGODB_URI: requiredString("MONGODB_URI"),
   CLIENT_URL: optionalString(process.env.CLIENT_URL) ?? "",
-  SMTP_HOST: process.env.SMTP_HOST || "smtp.gmail.com",
-  SMTP_PORT: numberFromEnv("SMTP_PORT", 465),
-  SMTP_USER: optionalString(process.env.SMTP_USER) || optionalString(process.env.EMAIL_USER) || "basnetssahil@gmail.com",
-  SMTP_PASS: optionalString(process.env.SMTP_PASS) || optionalString(process.env.APP_PASSWORD),
-  SMTP_FROM_EMAIL: optionalString(process.env.SMTP_FROM_EMAIL) || optionalString(process.env.SMTP_USER) || optionalString(process.env.EMAIL_USER) || "basnetssahil@gmail.com",
+  SENDGRID_API_KEY: optionalString(process.env.SENDGRID_API_KEY),
+  EMAIL_FROM: optionalString(process.env.EMAIL_FROM) ?? "basnetssahil@gmail.com",
 } as const;
