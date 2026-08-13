@@ -169,6 +169,19 @@ export const updateProfile = async (req: UserRequest, res: Response) => {
       return res.status(400).json({ message: "Profile pic, name, or email is required" });
     }
 
+    const currentUser = await User.findById(userId);
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const isEmailChanging = email && email !== currentUser.email;
+    if (isEmailChanging) {
+      const existing = await User.findOne({ email });
+      if (existing) {
+        return res.status(400).json({ message: "Email already in use" });
+      }
+    }
+
     let uploadResponse;
     if (profilePic) {
       const imageValidation = validateDataImage(profilePic);
@@ -179,19 +192,117 @@ export const updateProfile = async (req: UserRequest, res: Response) => {
         resource_type: "image",
       });
     }
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      {
-        ...(uploadResponse && { profilePic: uploadResponse.secure_url }),
-        ...(fullName && { fullName }),
-        ...(email && { email }),
-      },
-      { new: true },
-    );
 
-    res.status(200).json(updatedUser);
+    if (uploadResponse) currentUser.profilePic = uploadResponse.secure_url;
+    if (fullName) currentUser.fullName = fullName;
+
+    if (isEmailChanging) {
+      const otp = generateOTP();
+      const now = Date.now();
+      currentUser.pendingEmail = email;
+      currentUser.emailChangeOtp = otp;
+      currentUser.emailChangeOtpExpiresAt = new Date(now + 10 * 60 * 1000);
+      currentUser.emailChangeOtpLastSentAt = new Date(now);
+      currentUser.emailChangeOtpResendCount = 0;
+      await currentUser.save();
+
+      sendOtpEmailInBackground({
+        to: email,
+        subject: "Confirm your new email for Zeno Chat",
+        html: `<p>Your verification code to confirm this email change is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
+      });
+
+      return res.status(200).json({
+        ...currentUser.toObject(),
+        requireEmailOtp: true,
+        pendingEmail: email,
+        message: "OTP sent to your new email address",
+      });
+    }
+
+    await currentUser.save();
+    res.status(200).json(currentUser);
   } catch (error) {
     logger.error("error in update profile: " + error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const verifyEmailChange = async (req: UserRequest, res: Response) => {
+  const { otp } = req.body;
+  try {
+    const userId = req?.user?._id;
+    if (!otp) {
+      return res.status(400).json({ message: "OTP is required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!user.pendingEmail || !user.emailChangeOtp) {
+      return res.status(400).json({ message: "No pending email change" });
+    }
+
+    if (user.emailChangeOtp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (!user.emailChangeOtpExpiresAt || user.emailChangeOtpExpiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ message: "OTP has expired" });
+    }
+
+    user.email = user.pendingEmail;
+    user.pendingEmail = undefined;
+    user.emailChangeOtp = undefined;
+    user.emailChangeOtpExpiresAt = undefined;
+    user.emailChangeOtpLastSentAt = undefined;
+    user.emailChangeOtpResendCount = 0;
+    await user.save();
+
+    res.status(200).json(user);
+  } catch (error) {
+    logger.error("Error in verifyEmailChange controller: " + (error as Error).message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const resendEmailChangeOtp = async (req: UserRequest, res: Response) => {
+  try {
+    const userId = req?.user?._id;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user.pendingEmail) return res.status(400).json({ message: "No pending email change" });
+
+    const now = Date.now();
+    if (user.emailChangeOtpLastSentAt) {
+      const timeSinceLastSent = now - user.emailChangeOtpLastSentAt.getTime();
+      const count = user.emailChangeOtpResendCount || 0;
+      const requiredWaitMs = getOtpWaitMs(count);
+
+      if (timeSinceLastSent < requiredWaitMs) {
+        const remainingSeconds = Math.ceil((requiredWaitMs - timeSinceLastSent) / 1000);
+        return res.status(429).json({ message: `Please wait ${remainingSeconds} seconds before requesting another OTP`, remainingSeconds });
+      }
+    }
+
+    const otp = generateOTP();
+    user.emailChangeOtp = otp;
+    user.emailChangeOtpExpiresAt = new Date(now + 10 * 60 * 1000);
+    user.emailChangeOtpLastSentAt = new Date(now);
+    user.emailChangeOtpResendCount = (user.emailChangeOtpResendCount || 0) + 1;
+    await user.save();
+
+    sendOtpEmailInBackground({
+      to: user.pendingEmail,
+      subject: "Your new OTP to confirm your email change",
+      html: `<p>Your new verification code is <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
+    });
+
+    res.status(200).json({ message: "OTP resent successfully" });
+  } catch (error) {
+    logger.error("Error in resendEmailChangeOtp controller: " + (error as Error).message);
     res.status(500).json({ message: "Internal server error" });
   }
 };

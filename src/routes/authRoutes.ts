@@ -10,6 +10,8 @@ import {
   resendOtp,
   forgotPassword,
   resetPassword,
+  verifyEmailChange,
+  resendEmailChangeOtp,
 } from "../controllers/authController.ts";
 import { protectRoute } from "../middlewares/auth.middleware.ts";
 const router = express.Router();
@@ -17,6 +19,8 @@ const router = express.Router();
 
 router.get("/check", protectRoute, checkAuth);
 router.put("/update-profile", protectRoute, updateProfile);
+router.post("/verify-email-change", protectRoute, verifyEmailChange);
+router.post("/resend-email-change-otp", protectRoute, resendEmailChangeOtp);
 
 router.post("/signup", register);
 router.post("/verify-otp", verifyOtp);

@@ -18,6 +18,11 @@ export interface IUser {
   passwordResetOtpExpiresAt?: Date;
   passwordResetOtpLastSentAt?: Date;
   passwordResetOtpResendCount: number;
+  pendingEmail?: string;
+  emailChangeOtp?: string;
+  emailChangeOtpExpiresAt?: Date;
+  emailChangeOtpLastSentAt?: Date;
+  emailChangeOtpResendCount: number;
 }
 
 export type UserDocument = HydratedDocument<IUser>;
@@ -93,6 +98,22 @@ const userSchema = new mongoose.Schema<IUser>(
       type: Date,
     },
     passwordResetOtpResendCount: {
+      type: Number,
+      default: 0,
+    },
+    pendingEmail: {
+      type: String,
+    },
+    emailChangeOtp: {
+      type: String,
+    },
+    emailChangeOtpExpiresAt: {
+      type: Date,
+    },
+    emailChangeOtpLastSentAt: {
+      type: Date,
+    },
+    emailChangeOtpResendCount: {
       type: Number,
       default: 0,
     },
